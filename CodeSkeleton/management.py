@@ -4,6 +4,7 @@ import pyspark
 from pyspark import SparkConf
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import lit
+import pyspark.sql.functions as F
 
 HADOOP_HOME = "C:/UNI/QUART/BDA/BDA-big-data/CodeSkeleton/resources/hadoop_home"
 JDBC_JAR = "C:/UNI/QUART/BDA/BDA-big-data/CodeSkeleton/resources/postgresql-42.2.8.jar"
@@ -20,11 +21,15 @@ def readTrainingData(spark):
     for filename in os.listdir("resources/trainingData"):
         if filename.endswith(".csv"):
             files.append(spark.read.csv("resources/trainingData/" + filename, sep = ';' ,header=True, inferSchema=True))
-            files[-1] = files[-1].withColumn("aircraft", lit(filename[-10:-4]))
+            # transform "date" column from datetime.datetime to datetime.date
+            files[-1] = files[-1].withColumn("date", F.to_date(F.col("date"), "yyyy-MM-dd")).groupBy("date")\
+                .agg(F.mean("value").alias('value')).withColumn("aircraft", lit(filename[-10:-4])).select("aircraft","date","value")
+        break
 
     print(files[0].take(1))
-    return files    
+    return files
     
+
 if(__name__== "__main__"):
     os.environ["HADOOP_HOME"] = HADOOP_HOME
     sys.path.append(HADOOP_HOME + "\\bin")
