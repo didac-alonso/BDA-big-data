@@ -36,12 +36,12 @@ def readTrainingData(spark):
             file = spark.read.csv("resources/trainingData/" + filename, sep = ';' ,header=True, inferSchema=True)
 
             # transform "date" column from datetime.datetime to datetime.date
-            file = file.withColumn("date", F.to_date(F.col("date"), "yyyy-MM-dd")).groupBy("date")\
-                .agg(F.mean("value").alias('value')).withColumn("aircraft", lit(filename[-10:-4])).select("aircraft","date","value")
+            file = file.withColumn("date", F.to_date(F.col("date"), "yyyy-MM-dd"))\
+                .withColumn("aircraft", lit(filename[-10:-4])).select("aircraft","date","value")
             
             # finally we add the value to the dataframe
             data = data.union(file)
-    # data = data.groupBy(["date",'aircraft']).agg(F.mean("value").alias('value')).select("aircraft","date","value"
+    data = data.groupBy(["date",'aircraft']).agg(F.mean("value").alias('value'))
 
     print(data.show(2))
     return data
