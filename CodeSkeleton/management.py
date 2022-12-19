@@ -3,6 +3,7 @@ import sys
 import pyspark
 from pyspark import SparkConf
 from pyspark.sql import SparkSession
+from pyspark.sql.types import StructType,StructField, StringType, DateType, FloatType
 from pyspark.sql.functions import lit
 import pyspark.sql.functions as F
 
@@ -15,20 +16,38 @@ PYSPARK_DRIVER_PYTHON = "python3"
 # the last 6 characters from the filename without the csv extension
 def readTrainingData(spark):
     
-    files = [] # list of DataFrames
+    # We create a empty dataframe to store the data
+    schema = StructType([
+        StructField('aircraft', StringType(), True),
+        StructField('date', DateType(), True),
+        StructField('value', FloatType(), True)
+    ])
     
-    # for which iterates beyond the filenames of the files in the folder resources/trainingData and creates a DataFrame with the content of each file
+    # The DataFrame has the following schema: aircraft, date, value
+    # Where aircraft is the aircraft id, date is the day of the measurement and value is the average values for the sensor
+    data = spark.createDataFrame([], schema = schema) 
+    
+    
+    
+    # for that iterates beyond the filenames of the files in the folder resources/trainingData and creates a DataFrame with the content of each file
     for filename in os.listdir("resources/trainingData"):
         if filename.endswith(".csv"):
-            files.append(spark.read.csv("resources/trainingData/" + filename, sep = ';' ,header=True, inferSchema=True))
-            # transform "date" column from datetime.datetime to datetime.date
-            files[-1] = files[-1].withColumn("date", F.to_date(F.col("date"), "yyyy-MM-dd")).groupBy("date")\
-                .agg(F.mean("value").alias('value')).withColumn("aircraft", lit(filename[-10:-4])).select("aircraft","date","value")
-        break
 
-    print(files[0].take(1))
-    return files
+            file = spark.read.csv("resources/trainingData/" + filename, sep = ';' ,header=True, inferSchema=True)
+
+            # transform "date" column from datetime.datetime to datetime.date
+            file = file.withColumn("date", F.to_date(F.col("date"), "yyyy-MM-dd")).groupBy("date")\
+                .agg(F.mean("value").alias('value')).withColumn("aircraft", lit(filename[-10:-4])).select("aircraft","date","value")
+            
+            # finally we add the value to the dataframe
+            data = data.union(file)
+    # data = data.groupBy(["date",'aircraft']).agg(F.mean("value").alias('value')).select("aircraft","date","value"
+
+    print(data.show(2))
+    return data
     
+
+
 
 if(__name__== "__main__"):
     os.environ["HADOOP_HOME"] = HADOOP_HOME
