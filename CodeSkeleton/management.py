@@ -64,18 +64,25 @@ if(__name__== "__main__"):
         .config("spark.jars.packages", "org.postgresql:postgresql:42.2.12") \
         .getOrCreate()
     sc = pyspark.SparkContext.getOrCreate()
-    # DW = (spark.read
-    #     .format("jdbc")
-    #     .option("driver","org.postgresql.Driver")
-    #     .option("url",
-    #     "jdbc:postgresql://postgresfib.fib.upc.edu:6433/DW?sslmode=require")
-    #     .option("dbtable", "public.aircraftutilization")
-    #     .option("user", "didac.alonso")
-    #     .option("password", "DB100301")
-    #     .load())
-    
+
+    DW = (spark.read
+        .format("jdbc")
+        .option("driver","org.postgresql.Driver")
+        .option("url",
+        "jdbc:postgresql://postgresfib.fib.upc.edu:6433/DW?sslmode=require")
+        .option("dbtable", "public.aircraftutilization")
+        .option("user", "didac.alonso")
+        .option("password", "DB100301")
+        .load())
     
     files = readTrainingData(spark)
+    
+    
+    # Faig right, i poso 0 en els nulls per si no hi ha el KPI calculat, l'assumim com a 0
+    DW = DW.select('aircraft_registration','date','FH', 'FC', 'DM').withColumnRenamed('aircraft_registration','aircraft') \
+        .join(files, on = ['aircraft','date'], how = 'right').na.fill(value = 0).show(10)
+        # Faltaria fer el column renamed però per la data però el postgres no va, així que no sé :D
+            
     # print(type(DW))
     
     # a = DW.select('*')
