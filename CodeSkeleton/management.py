@@ -65,7 +65,7 @@ if(__name__== "__main__"):
         .getOrCreate()
     sc = pyspark.SparkContext.getOrCreate()
 
-    DW = (spark.read
+    DW_aircraft = (spark.read
         .format("jdbc")
         .option("driver","org.postgresql.Driver")
         .option("url",
@@ -75,13 +75,27 @@ if(__name__== "__main__"):
         .option("password", "DB100301")
         .load())
     
+    DW_lb = (spark.read
+        .format("jdbc")
+        .option("driver","org.postgresql.Driver")
+        .option("url",
+        "jdbc:postgresql://postgresfib.fib.upc.edu:6433/DW?sslmode=require")
+        .option("dbtable", "public.logbookreporting")
+        .option("user", "didac.alonso")
+        .option("password", "DB100301")
+        .load())
+    
+    
     files = readTrainingData(spark)
     
+    DW_lb = DW_lb.select('aircraft_registration','date','kind').withColumn('kind', F.when(F.col('kind') == 'manteniment', 'unscheduled maintenance' or \
+        F.col('kind') == 'revisio').otherwise('no maintenance'))
     
     # Faig right, i poso 0 en els nulls per si no hi ha el KPI calculat, l'assumim com a 0
-    DW = DW.select('aircraft_registration','date','FH', 'FC', 'DM').withColumnRenamed('aircraft_registration','aircraft') \
-        .join(files, on = ['aircraft','date'], how = 'right').na.fill(value = 0).show(10)
+    DW_aircraft = DW_aircraft.select('aircraft_registration','date','FH', 'FC', 'DM').withColumnRenamed('aircraft_registration','aircraft') \
+        .join(DW_lb, on = ['aircraft','date']).na.fill(value = 'no maintenance').join(files, on = ['aircraft','date'], how = 'right').na.fill(value = 0).show(10)
         # Faltaria fer el column renamed però per la data però el postgres no va, així que no sé :D
+    
             
     # print(type(DW))
     
