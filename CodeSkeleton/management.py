@@ -7,8 +7,8 @@ from pyspark.sql.types import StructType,StructField, StringType, DateType, Floa
 from pyspark.sql.functions import lit
 import pyspark.sql.functions as F
 
-HADOOP_HOME = "C:/UNI/QUART/BDA/BDA-big-data/CodeSkeleton/resources/hadoop_home"
-JDBC_JAR = "C:/UNI/QUART/BDA/BDA-big-data/CodeSkeleton/resources/postgresql-42.2.8.jar"
+HADOOP_HOME = "./BDA-big-data/CodeSkeleton/resources/hadoop_home"
+JDBC_JAR = "./BDA-big-data/CodeSkeleton/resources/postgresql-42.2.8.jar"
 PYSPARK_PYTHON = "python3"
 PYSPARK_DRIVER_PYTHON = "python3"
 
@@ -25,7 +25,7 @@ def readTrainingData(spark):
     
     # The DataFrame has the following schema: aircraft, date, value
     # Where aircraft is the aircraft id, date is the day of the measurement and value is the average values for the sensor
-    data = spark.createDataFrame([], schema = schema) 
+    data = spark.createDataFrame([], schema = schema)  
     
     
     
