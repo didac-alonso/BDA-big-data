@@ -47,6 +47,17 @@ def readTrainingData(spark):
     return data
     
 
+def check_following_days(DATA):
+    """"This function checks if the following 6 days are scheduled or not. If they are not, the maintenance column is set to 0."""
+
+    # We need to order the data by aircraftid and timeid, to be able to use the lead function   
+    w = Window.partitionBy('aircraftid').orderBy('timeid')
+
+    for i in range(1,7):
+        DATA = DATA.withColumn('following_sch', F.lead('Scheduled', offset= i).over(w)).withColumn('following_day', F.lead('timeid').over(w))\
+                .withColumn('maintenance', F.when(((F.col('following_sch') == 0)&(F.date_add(F.col('timeid'),7) > F.col('following_day')))|(F.col('maintenance') == 0)\
+                    |(F.col('Scheduled') == 0),0).otherwise(1)).sort('aircraftid','timeid').select('aircraftid','timeid','FH','FC','DM','value','maintenance', 'Scheduled')
+    return DATA
 
 
 if(__name__== "__main__"):
@@ -89,12 +100,6 @@ if(__name__== "__main__"):
     
     files = readTrainingData(spark)
     
-    # DATA = AMOS.select('aircraftregistration', 'subsystem', 'starttime', 'kind').filter(F.col('subsystem') == 3453)\
-    #     .withColumn('Scheduled', F.when((F.col('kind') == 'Maintenance')|(F.col('kind') == 'Revision'), 0).otherwise(1)).drop('kind','subsystem')\
-    #         .withColumnRenamed('aircraftregistration','aircraftid').withColumnRenamed('starttime','timeid').withColumn('timeid', F.to_date(F.col('timeid'),'yyyy-MM-dd'))\
-    #             .join(files, on = ['aircraftid','timeid'], how = 'inner').join(DW, on = ['aircraftid', 'timeid'], how = 'inner').withColumnRenamed('flighthours','FH')\
-    #                 .withColumnRenamed('flightcycles','FC').withColumnRenamed('delayedminutes','DM').select('aircraftid','timeid','Scheduled','FH','FC','DM','value')
-    
     # We join the data from the sensors with the KPIs
     SENSOR_KPI = files.join(DW, on = ['aircraftid','timeid'], how = 'inner').withColumnRenamed('flighthours','FH')\
         .withColumnRenamed('flightcycles','FC').withColumnRenamed('delayedminutes','DM')
@@ -105,35 +110,9 @@ if(__name__== "__main__"):
     DATA = AMOS.select(F.col('aircraftregistration').alias('aircraftid'), F.col('subsystem').alias('subsystem'), F.col('starttime').alias('timeid'), F.col('kind').alias('kind'))\
         .filter(F.col('subsystem') == 3453).withColumn('Scheduled', F.when((F.col('kind') == 'Maintenance')|(F.col('kind') == 'Revision'), 1).otherwise(0)).drop('kind','subsystem')\
             .withColumn('timeid', F.to_date(F.col('timeid'),'yyyy-MM-dd')).join(SENSOR_KPI, on = ['aircraftid','timeid'], how = 'right').fillna(1)\
-                .select('aircraftid','timeid','Scheduled','FH','FC','DM','value')
-
-    
-    # We need to order the data by aircraftid and timeid, to be able to use the lead function   
-    w = Window.partitionBy('aircraftid').orderBy('timeid')
-    
-    # We need to put a 0 if there's a 0 in the Scheduled column in the next 7 days for the same aircraft and a 1 if not
-    DATA = DATA.withColumn('following_sch', F.lead('Scheduled').over(w)).withColumn('following_day', F.lead('timeid').over(w))\
-        .withColumn('last_sch', F.lag('Scheduled').over(w)).withColumn('last_day', F.lag('timeid').over(w))\
-            .withColumn('maintenance', F.when(F.col('Scheduled') == 0, 0).otherwise(1))\
-                .withColumn('maintenance', F.when(((F.col('following_sch') == 0)&(F.date_add(F.col('timeid'),7) > F.col('following_day')))|(F.col('maintenance') == 0),0)\
-                    .otherwise(1)).sort('aircraftid','timeid').select('aircraftid','timeid','FH','FC','DM','value','maintenance', 'Scheduled', 'following_day', 'following_sch').show(20)
-                    
-                    # (F.col('last_sch')== 0 & F.date_add(F.col('last_day'),7) > ), 0).otherwise(1))\
-    # DATA = DATA.withColumn('sch', F.when(F.col('scheduled') == 0, 0).otherwise(1)).withColumn('sch', F.lag('sch').over(w)).withColumn('sch', F.lead('sch').over(w))\
-    #     .withColumn('sch', F.when(F.date_add(F.col('timeid'),7) < F.col('timeid'), 0).otherwise(1)).sort('aircraftid','timeid').show(20)
-
+                .select('aircraftid','timeid','Scheduled','FH','FC','DM','value').withColumn('maintenance', F.when(F.col('Scheduled') == 0, 0).otherwise(1))\
                 
-    # DW_lb = DW_lb.select('aircraft_registration','date','kind').withColumn('kind', F.when(F.col('kind') == 'manteniment', 'unscheduled maintenance' or \
-    #     F.col('kind') == 'revisio').otherwise('no maintenance'))
+
     
-    # # Faig right, i poso 0 en els nulls per si no hi ha el KPI calculat, l'assumim com a 0
-    # DW_aircraft = DW_aircraft.select('aircraft_registration','date','FH', 'FC', 'DM').withColumnRenamed('aircraft_registration','aircraft') \
-    #     .join(DW_lb, on = ['aircraft','date']).na.fill(value = 'no maintenance').join(files, on = ['aircraft','date'], how = 'right').na.fill(value = 0).show(10)
-    #     # Faltaria fer el column renamed però per la data però el postgres no va, així que no sé :D
-    
-            
-    # print(type(DW))
-    
-    # a = DW.select('*')
-    # print(a.take(1))
-    #Create and point to your pipelines here
+    DATA = check_following_days(DATA)
+    DATA.show(30)
