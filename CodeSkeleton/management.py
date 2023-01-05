@@ -93,15 +93,21 @@ if(__name__== "__main__"):
     DATA = AMOS.select('aircraftregistration', 'subsystem', 'starttime', 'kind').filter(F.col('subsystem') == 3453)\
         .withColumn('Scheduled', F.when((F.col('kind') == 'Maintenance')|(F.col('kind') == 'Revision'), 0).otherwise(1)).drop('kind','subsystem')\
             .withColumnRenamed('aircraftregistration','aircraftid').withColumnRenamed('starttime','timeid').withColumn('timeid', F.to_date(F.col('timeid'),'yyyy-MM-dd'))\
-                .join(DW, on = ['aircraftid', 'timeid'], how = 'inner').withColumnRenamed('flighthours','FH').withColumnRenamed('flightcycles','FC')\
-                    .withColumnRenamed('delayedminutes','DM').join(files, on = ['aircraftid','timeid'], how = 'inner')\
-                       .select('aircraftid','timeid','Scheduled','FH','FC','DM','value')
+                .join(files, on = ['aircraftid','timeid'], how = 'right').fillna(1).join(DW, on = ['aircraftid', 'timeid'], how = 'inner').withColumnRenamed('flighthours','FH')\
+                    .withColumnRenamed('flightcycles','FC').withColumnRenamed('delayedminutes','DM').select('aircraftid','timeid','Scheduled','FH','FC','DM','value')
     
     
     
     # We need to put a 0 if there's a 0 in the Scheduled column in the next 7 days for the same aircraft and a 1 if not
     DATA = DATA.withColumn('following_sch',F.lead('Scheduled', 7).over(Window.partitionBy('aircraftid').orderBy('timeid'))).show(10)
-        
+    
+
+
+    w = Window.partitionBy('aircraftid').orderBy('timeid')
+    
+    DATA = DATA.withColumn('sch', F.when(F.col('scheduled') == 1, 0).otherwise(0)).withColumn('sch', F.lag('sch').over(w)).withColumn('sch', F.lead('sch').over(w))\
+        .withColumn('sch', F.when(F.date_add(F.col('date'),7) < F.col('date'), 0).otherwise(1)).show()
+
                 
     # DW_lb = DW_lb.select('aircraft_registration','date','kind').withColumn('kind', F.when(F.col('kind') == 'manteniment', 'unscheduled maintenance' or \
     #     F.col('kind') == 'revisio').otherwise('no maintenance'))
