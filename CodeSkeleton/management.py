@@ -121,7 +121,7 @@ if(__name__== "__main__"):
     # We join the data from operation interruption with the data from the sensors+KPIs, we perform a full join to keep all the data from the sensors, and add 1('no mantainance')
     # for the aircrafts that don't have any interruption. We also need to keep all the DATA from operation interruption, because we need to check if the following 7 days are scheduled or not
     DATA = DATA.join(KPI_SENSOR, on = ['aircraftid','timeid'], how = 'full')\
-                .select('aircraftid','timeid','Scheduled','FH','FC','DM','value').withColumn('maintenance', F.when(F.col('Scheduled') == 0, 0).otherwise(1))\
+                .select('aircraftid','timeid','Scheduled','FH','FC','DM','value').fillna(1, subset=['Scheduled']).withColumn('maintenance', F.when(F.col('Scheduled') == 0, 0).otherwise(1))\
                 
     DATA = check_following_days(DATA)
     
