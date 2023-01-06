@@ -48,15 +48,20 @@ def readTrainingData(spark):
     
 
 def check_following_days(DATA):
-    """"This function checks if the following 6 days are scheduled or not. If they are not, the maintenance column is set to 0."""
+    """"This function checks if the following 7 days are scheduled or not. If they are not, the maintenance column is set to 0."""
 
     # We need to order the data by aircraftid and timeid, to be able to use the lead function   
     w = Window.partitionBy('aircraftid').orderBy('timeid')
 
-    for i in range(1,7):
-        DATA = DATA.withColumn('following_sch', F.lead('Scheduled', offset= i).over(w)).withColumn('following_day', F.lead('timeid').over(w))\
-                .withColumn('maintenance', F.when(((F.col('following_sch') == 0)&(F.date_add(F.col('timeid'),7) > F.col('following_day')))|(F.col('maintenance') == 0)\
+    for i in range(1,8):
+        
+        # We create a new column with the i-following day and the i-following scheduled value, this is the next i row
+        DATA = DATA.withColumn('following_sch', F.lead('Scheduled', offset= i).over(w)).withColumn('following_day', F.lead('timeid', offset = i).over(w))
+        
+        # We check if the i-following day is scheduled or not, if it is not, we set the maintenance column to 0
+        DATA = DATA.withColumn('maintenance', F.when(((F.col('following_sch') == 0)&(F.date_add(F.col('timeid'),7) > F.col('following_day')))|(F.col('maintenance') == 0)\
                     |(F.col('Scheduled') == 0),0).otherwise(1)).sort('aircraftid','timeid').select('aircraftid','timeid','FH','FC','DM','value','maintenance', 'Scheduled')
+    
     return DATA
 
 
@@ -101,18 +106,25 @@ if(__name__== "__main__"):
     files = readTrainingData(spark)
     
     # We join the data from the sensors with the KPIs
-    SENSOR_KPI = files.join(DW, on = ['aircraftid','timeid'], how = 'inner').withColumnRenamed('flighthours','FH')\
+    KPI_SENSOR = files.join(DW, on = ['aircraftid','timeid'], how = 'inner').withColumnRenamed('flighthours','FH')\
         .withColumnRenamed('flightcycles','FC').withColumnRenamed('delayedminutes','DM')
     
+    # We select the columns that we need from the operation interruption table
+    DATA = AMOS.select(F.col('aircraftregistration').alias('aircraftid'), F.col('subsystem').alias('subsystem'), F.col('starttime').alias('timeid'), F.col('kind').alias('kind'))
     
-    # We join the data from aircraft interruptions with the data from the sensors+KPIs, we perform a rigth join to keep all the data from the sensors, and add 0('no mantainance')
+    # We filter the data to keep only the subsystem 3453, and we create a new column with 1 if the interruption is scheduled, and 0 if it is not, we drop the columns that we don't need anymore
+    DATA = DATA.filter(F.col('subsystem') == 3453).withColumn('Scheduled', F.when((F.col('kind') == 'Maintenance')|(F.col('kind') == 'Revision'), 1).otherwise(0)).drop('kind','subsystem')
+    
+    # We format the timeid column by year-month-day to be able to join it with the data from the sensors
+    DATA = DATA.withColumn('timeid', F.to_date(F.col('timeid'),'yyyy-MM-dd'))
+    
+    # We join the data from operation interruption with the data from the sensors+KPIs, we perform a rigth join to keep all the data from the sensors, and add 0('no mantainance')
     # for the aircrafts that don't have any interruption
-    DATA = AMOS.select(F.col('aircraftregistration').alias('aircraftid'), F.col('subsystem').alias('subsystem'), F.col('starttime').alias('timeid'), F.col('kind').alias('kind'))\
-        .filter(F.col('subsystem') == 3453).withColumn('Scheduled', F.when((F.col('kind') == 'Maintenance')|(F.col('kind') == 'Revision'), 1).otherwise(0)).drop('kind','subsystem')\
-            .withColumn('timeid', F.to_date(F.col('timeid'),'yyyy-MM-dd')).join(SENSOR_KPI, on = ['aircraftid','timeid'], how = 'right').fillna(1)\
+    DATA = DATA.join(KPI_SENSOR, on = ['aircraftid','timeid'], how = 'right').fillna(1)\
                 .select('aircraftid','timeid','Scheduled','FH','FC','DM','value').withColumn('maintenance', F.when(F.col('Scheduled') == 0, 0).otherwise(1))\
                 
 
     
     DATA = check_following_days(DATA)
+    
     DATA.show(30)
