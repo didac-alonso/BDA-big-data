@@ -118,13 +118,14 @@ if(__name__== "__main__"):
     # We format the timeid column by year-month-day to be able to join it with the data from the sensors
     DATA = DATA.withColumn('timeid', F.to_date(F.col('timeid'),'yyyy-MM-dd'))
     
-    # We join the data from operation interruption with the data from the sensors+KPIs, we perform a rigth join to keep all the data from the sensors, and add 0('no mantainance')
-    # for the aircrafts that don't have any interruption
-    DATA = DATA.join(KPI_SENSOR, on = ['aircraftid','timeid'], how = 'right').fillna(1)\
+    # We join the data from operation interruption with the data from the sensors+KPIs, we perform a full join to keep all the data from the sensors, and add 1('no mantainance')
+    # for the aircrafts that don't have any interruption. We also need to keep all the DATA from operation interruption, because we need to check if the following 7 days are scheduled or not
+    DATA = DATA.join(KPI_SENSOR, on = ['aircraftid','timeid'], how = 'full')\
                 .select('aircraftid','timeid','Scheduled','FH','FC','DM','value').withColumn('maintenance', F.when(F.col('Scheduled') == 0, 0).otherwise(1))\
                 
-
-    
     DATA = check_following_days(DATA)
+    
+    # Now we drop the rows that have null values at 'value' column, because we can't train the model with them
+    DATA = DATA.na.drop(subset = ['value'])
     
     DATA.show(30)
