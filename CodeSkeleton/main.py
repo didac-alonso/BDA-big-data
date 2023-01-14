@@ -31,35 +31,35 @@ PYSPARK_PYTHON = "python3"
 PYSPARK_DRIVER_PYTHON = "python3"
 
 
-def printResults(resultRow,aircraftID,timeID):
-    result = resultRow.collect()
-    for row in result:
-        labelString = "WILL HAVE" if row["prediction"] else "WILL NOT HAVE"
-        nextdate = F.to_date(timeID,'yyyy-MM-dd')
-        print("==>",aircraftID,labelString,"an unexpected operation interruption in a range of 7 days from",timeID, "(included)")
+# def printResults(resultRow,aircraftID,timeID):
+#     result = resultRow.collect()
+#     for row in result:
+#         labelString = "WILL HAVE" if row["prediction"] else "WILL NOT HAVE"
+#         nextdate = F.to_date(timeID,'yyyy-MM-dd')
+#         print("==>",aircraftID,labelString,"an unexpected operation interruption in a range of 7 days from",timeID, "(included)")
 
 
 
-def interface(spark, AMOS, DW, sc, queryCache):
-    print("Welcome! \n Given an aircraftID and a given day a trained model will return a boolean indicating if it is going to have an unexpected operation interruption in the seven following days.")
-    print("These are the model metrics:")
-    f=open("modelmetrics.txt", "r")
-    fl =f.readlines()
-    for x in fl:
-        print(x)
-    while True:
-        aircraftID = str(input("Introduce the aircraft ID (AA-AAA):"))
-        timeID = str(input("Introduce the day (YYYY-MM-DD):"))
-        query = spark.createDataFrame([[aircraftID,timeID]],["aircraftid","timeid"])
-        # If it is not empty, then there's only one row and we already have the value stored:
-        resultRow = queryCache.join(query, queryCache.aircraftid == query.aircraftid & queryCache.timeid == query.timeid,"leftsemi")
-        if len(resultRow) == 0: #this query hasn't already been computed in this session
-            resultRow = p3RTClassifier(aircraftID, timeID, spark, AMOS, DW, sc) #find solution
-            try:
-                queryCache =  queryCache.unionAll(resultRow) #update query cache
-            except: # If there is an error, that means that some necessary data is missing and nothing can be done
-                return
-        printResults(resultRow)
+# def interface(spark, AMOS, DW, sc, queryCache):
+#     print("Welcome! \n Given an aircraftID and a given day a trained model will return a boolean indicating if it is going to have an unexpected operation interruption in the seven following days.")
+#     print("These are the model metrics:")
+#     f=open("modelmetrics.txt", "r")
+#     fl =f.readlines()
+#     for x in fl:
+#         print(x)
+#     while True:
+#         aircraftID = str(input("Introduce the aircraft ID (AA-AAA):"))
+#         timeID = str(input("Introduce the day (YYYY-MM-DD):"))
+#         query = spark.createDataFrame([[aircraftID,timeID]],["aircraftid","timeid"])
+#         # If it is not empty, then there's only one row and we already have the value stored:
+#         resultRow = queryCache.join(query, queryCache.aircraftid == query.aircraftid & queryCache.timeid == query.timeid,"leftsemi")
+#         if len(resultRow) == 0: #this query hasn't already been computed in this session
+#             resultRow = p3RTClassifier(aircraftID, timeID, spark, AMOS, DW, sc) #find solution
+#             try:
+#                 queryCache =  queryCache.unionAll(resultRow) #update query cache
+#             except: # If there is an error, that means that some necessary data is missing and nothing can be done
+#                 return
+#         printResults(resultRow)
 
 
 if(__name__== "__main__"):
