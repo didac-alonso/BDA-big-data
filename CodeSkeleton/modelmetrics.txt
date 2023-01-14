@@ -8,7 +8,7 @@ FEATURES:
  x4 --> FC (flight cycles that day)                            
  x5 --> DM (minutes delayed that day)                             
  x6 --> value (Average measurement for sensor 3453)
-Model Accuracy --> 82.05128205128204%
-Model Recall label 0 --> 91.04477611940298%
-Model Recall label 1 --> 27.27272727272727%
+Model Accuracy --> 89.65517241379311%
+Model Recall label 0 --> 87.3015873015873%
+Model Recall label 1 --> 95.83333333333334%
 ------------------------------------------------------------

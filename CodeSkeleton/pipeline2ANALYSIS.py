@@ -79,7 +79,7 @@ if(__name__== "__main__"):
 
 
 
-def p2Analysis(data,sc):
+def p2Analysis(data):
     # data = DATA.withColumnRenamed('maintenance','label')
 
     # 1. Index labels, to be used in the model.

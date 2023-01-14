@@ -31,11 +31,11 @@ PYSPARK_DRIVER_PYTHON = "python3"
 #   3. Filter the data to only include information about subsystem 3453
 #   4. Join the data from the sensors with the operation interruption table
 #       NOTE: The data is filtered to only include the interruptions that are not scheduled, and then using a full join 
-#       we add the unscheduledOI column to the data. If the interruption is not scheduled, the value is 1, and 0 otherwise
+#           we add the unscheduledOI column to the data. If the interruption is not scheduled, the value is 1, and 0 otherwise
 #   5. Check wether the following 7 days have an unscheduled OI or not. If not, the label column is set to 0
 #   6. Transform the DataFrame to matrix and save it as a .csv
 #       NOTE: At the end it returns the DataFrame since the model needs it to train the model, so it is not necessary to read it again
-
+#           The line to transform the DataFrame to matrix is commented
 
 # Reads the csv files from resources/trainingData folder and returns a list of DafaFrames which also contains
 # the last 6 characters from the filename without the csv extension
@@ -94,26 +94,6 @@ def check_following_days(DATA):
     return DATA
 
 
-# def check_following_days(DATA):
-#     """"This function checks if the following 7 days are scheduled or not. If they are not, the maintenance column is set to 0."""
-
-#     # We need to order the data by aircraftid and timeid, to be able to use the lead function
-#     w = Window.partitionBy('aircraftid').orderBy('timeid')
-
-#     for i in range(1,8):
-
-#         # We create a new column with the i-following day and the i-following scheduled value, this is the next i row
-#         DATA = DATA.withColumn('following_sch', F.lead('Scheduled', offset= i).over(w)).withColumn('following_day', F.lead('timeid', offset = i).over(w))
-
-#         # We check if the i-following day is scheduled or not, if it is not, we set the maintenance column to 0
-#         DATA = DATA.withColumn('maintenance', F.when(((F.col('following_sch') == 0)&(F.date_add(F.col('timeid'),7) > F.col('following_day')))|(F.col('maintenance') == 0)\
-#                     |(F.col('Scheduled') == 0),0).otherwise(1)).sort('aircraftid','timeid').select('aircraftid','timeid','FH','FC','DM','value','maintenance', 'Scheduled')
-
-#     return DATA
-
-
-
-
 def DFtoMatrix(df):
 
     return None
@@ -133,8 +113,6 @@ def p1Management(spark,AMOS,DW):
 
     # 3. We filter the data to keep only the subsystem 3453 and the unscheduled operation interruptions. We drop the columns we do not use any more (kind and subsystem)
     amosDATA = amosDATA.filter(F.col('subsystem') == 3453).withColumn('Scheduled', F.when((F.col('kind') == 'Maintenance')|(F.col('kind') == 'Revision'), 1).otherwise(0)).drop('kind','subsystem')
-
-    # DATA = DATA.filter((F.col('subsystem') == 3453)&((F.col('kind') == "AircraftOnGround")|(F.col('kind') == "Delay")|(F.col('kind') == "Safety"))).drop('kind','subsystem')
     
     # We format the timeid column by year-month-day to be able to join it with the data from the sensors.
     amosDATA = amosDATA.withColumn('timeid', F.to_date(F.col('timeid'),'yyyy-MM-dd'))
@@ -149,13 +127,11 @@ def p1Management(spark,AMOS,DW):
     DATA = amosDATA.join(KPI_SENSOR, on = ['aircraftid','timeid'], how = 'full')\
                 .select('aircraftid','timeid','unscheduledOI','FH','FC','DM','value').fillna(0, subset=['unscheduledOI'])
 
-    # DATA = amosDATA.join(KPI_SENSOR, on = ['aircraftid','timeid'], how = 'full')\
-    #             .select('aircraftid','timeid','Scheduled','FH','FC','DM','value').fillna(1, subset=['Scheduled']).withColumn('maintenance', F.when(F.col('Scheduled') == 0, 0).otherwise(1))\
-    
+
     # We add the label column initialized at 0,
-    # it will be assigned in the fucntion check following_days --> 
-    # label = 1 --> unscheduled OI in the next 7 days
-    # label = 0 --> NO unscheduled OI in the next 7 days
+    # it will be assigned in the function check following_days:
+    #   label = 1 --> unscheduled OI in the next 7 days
+    #   label = 0 --> NO unscheduled OI in the next 7 days
     DATA = DATA.withColumn('label',lit(0))
 
     # 5. We check if there is an unscheduled operation interruption in the following 7 days
@@ -167,6 +143,7 @@ def p1Management(spark,AMOS,DW):
     DATA = DATA.na.drop(subset = ['value'])
         
     # 6. We transform the dataframe to a matrix and save it in a csv_file
-    matrixDATA = DFtoMatrix(DATA)
+    #   NOTE: We don't execute it since its not necessary
+    # matrixDATA = DFtoMatrix(DATA)
 
-    return DATA, matrixDATA
+    return DATA
