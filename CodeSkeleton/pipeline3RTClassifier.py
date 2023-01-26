@@ -4,29 +4,39 @@ import sys
 import pyspark
 from pyspark import SparkConf
 from pyspark.sql import SparkSession
-from pyspark.sql.types import StructType,StructField, StringType, DateType, FloatType, BooleanType 
+from pyspark.ml import PipelineModel
+from pyspark.sql.types import StructType,StructField, StringType, DateType, FloatType, IntegerType 
 from pyspark.sql.functions import lit
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 
-# HADOOP_HOME = "C:/Users/USER/Desktop/CED/Q5/BDA/PROJECTE2/BDA-big-data/CodeSkeleton/resources/hadoop_home"
-# JDBC_JAR = "C:/Users/USER/Desktop/CED/Q5/BDA/PROJECTE2/BDA-big-data/CodeSkeleton/resources/postgresql-42.2.8.jar"
-# PYSPARK_PYTHON = "python3"
-# PYSPARK_DRIVER_PYTHON = "python3"
+#------------------------------------------------------------------------------------------------------------------------------------------------------#
+# This pipeline implements the run-time classifier. That is, when the user enters manually
+# a series of queries (aircraftID,timeid), each record is enriched with the features necessary for the model to make a prediction.
+# In other words, from the csv files (just the ones that matter) the average value for the 3453 sensor is extracted, and the KPIs from the DW.
+# For that reasons, the only (aircraftid,timeid) pairs supported by this implementation are those which have both enrichments.
+# If that is the case, then the model makes the prediction and outputs it. In case there are repeated queries, a queryCache is kept 
+# (and returned at the end to consult all queries)
+# The pipeline consists in the following steps:
+#   0. Create the empty queryCache
+#   1. Read the queries  from the console
+#   2. Check that a concrete query has not already been computed
+#   3a. If it is not the case then look for the average value for sensor 3453 for that aircraft and day in the TrainingData
+#   4a. Retrieve the KPIs (FH,FC,DM) for that (aircraftID,timeID) from the DW
+#   5a. Merge that information to generate the entries for the model to predict
+#   6a. Make a prediction using the model
+#   3b. Retrieve the result from the queryCache
+#   4b and 7a. Output the prediction result 
+#------------------------------------------------------------------------------------------------------------------------------------------------------#
 
 
-HADOOP_HOME = "C:/UNI/Quart/BDA/BDA-big-data/CodeSkeleton/resources/hadoop_home"
-JDBC_JAR = "C:/UNI/Quart/BDA/BDA-big-data/CodeSkeleton/resources/postgresql-42.2.8.jar"
-PYSPARK_PYTHON = "python3"
-PYSPARK_DRIVER_PYTHON = "python3"
-
-
+# STEP 4b and 7a --> Output the prediction result 
 def printResults(resultRow,aircraftID,timeID):
+    """Recieves a pyspark dataframe and prints the 'prediction' result"""
     result = resultRow.collect()
     for row in result:
-        labelString = "WILL HAVE" if row["prediction"] else "WILL NOT HAVE"
-        nextdate = F.to_date(timeID,'yyyy-MM-dd')
-        print("==>",aircraftID,labelString,"an unexpected operation interruption in a range of 7 days from",timeID, "(included)")
+        labelString = "WILL HAVE" if row["label"] else "WILL NOT HAVE"
+        print("==>",aircraftID,labelString,"an unexpected operation interruption in a range of 7 days from",timeID, "(that day being included)")
 
 
 def interface(spark, DW, queryCache, model):
@@ -36,21 +46,28 @@ def interface(spark, DW, queryCache, model):
     fl =f.readlines()
     for x in fl:
         print(x)
-    while True:
-        aircraftID = str(input("Introduce the aircraft ID (AA-AAA):"))
-        timeID = str(input("Introduce the day (YYYY-MM-DD):"))
-        aircraftID,timeID = "XY-LOL", "2012-03-01"
-        query = spark.createDataFrame([[aircraftID,timeID]],["aircraftid","timeid"])
-        # If it is not empty, then there's only one row and we already have the value stored:
-        resultRow = queryCache.join(query, (queryCache.aircraftid == query.aircraftid) & (queryCache.timeid == query.timeid),"leftsemi")
-        if  resultRow.count() == 0: #this query hasn't already been computed in this session
-            resultRow = Evaluate(aircraftID, timeID, spark, DW, model) #find solution
-            try:
-                queryCache =  queryCache.union(resultRow) #update query cache
-            except: # If there is an error, that means that some necessary data is missing and nothing can be done
-                return
-        printResults(resultRow)
-        return queryCache
+    # STEP 1 --> Read the queries from a console
+    inp = input("Enter 'EXIT' to exit, 'CACHE' to display all queries done and anything else to use the Run-Time Classifier: ")
+    while inp!="EXIT":
+        if inp =="CACHE":
+            queryCache.show()
+        else:
+            aircraftID = str(input("Introduce the aircraft ID (AA-AAA):"))
+            timeID = str(input("Introduce the day (YYYY-MM-DD):"))
+            query = spark.createDataFrame([[aircraftID,timeID]],["aircraftid","timeid"])
+            # STEP 2 --> Check that that concrete query has not already been computed
+            # STEP 3b. Retrieve the result from the queryCache --> If it is not empty, then there's only one row and we already have the value stored:
+            resultRow = queryCache.join(query, (queryCache.aircraftid == query.aircraftid) & (queryCache.timeid == query.timeid),"leftsemi")
+            if  resultRow.count() == 0: #this query hasn't already been computed in this session
+                resultRow = Evaluate(aircraftID, timeID, spark, DW, model) #find solution
+                # In case the entry is untreatable --> NO RESULT ROW FOUND
+                if resultRow != None:
+                    resultRow = resultRow.withColumnRenamed('prediction','label').select('aircraftid','timeid','FH','FC','DM','value','label')
+                    queryCache =  queryCache.union(resultRow) #update query cache
+            if resultRow != None:
+                printResults(resultRow,aircraftID,timeID)
+        inp = input("Press intro to continue, enter 'EXIT' to exit, 'CACHE' to display all queries done and anything else to use the Run-Time Classifier:  ")
+    return queryCache
 
 def readCSVdata(spark, aircraftID, timeID):
     # We create a empty dataframe to store the data
@@ -75,42 +92,33 @@ def readCSVdata(spark, aircraftID, timeID):
 
 
 def Evaluate(aircraftID, timeID, spark, DW, model):
+    #STEP 3a --> If it is not the case then look for the average value for sensor 3453 for that aircraft and day in the TrainingData
     # We try to retrieve the average value of the 3453 sensor from the csv files
     try:
         CSVdata = readCSVdata(spark,aircraftID,timeID)
+        assert CSVdata.count() > 0 
     except:
         print("There is no avaliable information regarding sensor 3453 for aricraft ", aircraftID," at ", timeID)
         print("Due to lacking model features, no answer can be provided")
         return 
     # We try to retrieve the KPIs from the DW 
     try:
+        #STEP 4a --> Retrieve the KPIs (FH,FC,DM) for that (aircraftID,timeID) from the DW
+        #STEP 5a --> Merge that information to generate the entries for the model to predict
         dataFeatures = CSVdata.join(DW, on = ['aircraftid','timeid'], how = 'inner').withColumnRenamed('flighthours','FH')\
         .withColumnRenamed('flightcycles','FC').withColumnRenamed('delayedminutes','DM')
+        assert dataFeatures.count() > 0
     except:
         print("There is no available KPIs for aricraft ", aircraftID," at ", timeID)
         print("Due to lacking model features, no answer can be provided")
         return 
-    print("AAAAAAAA")
+    #STEP 6a --> Make a prediction using the model
     predictions = model.transform(dataFeatures)
-    predictions.show()
-    print("BBBBBBBB")
-
     return predictions
 
 
-    # Falta la part de carregar el model i fer la predicció. En principi la row amb les features ja està calculada.
-    # Ha de retornar un df amb l'estructura :    modelSchema = StructType([
-    #     StructField('aircraftid', StringType(), True),
-    #     StructField('timeid', DateType(), True),
-    #     StructField('FH', FloatType(), True),
-    #     StructField('FC', FloatType(), True),
-    #     StructField('DM', FloatType(), True),
-    #     StructField('value', FloatType(), True) --> fins aquí ja està guardat al "dataFeatures"
-    #     StructField('label',  BooleanType(), True) --> aquesta és la que s'ha d'afegir depenent del que torni el model (True si hi ha unexpected OI/ False si NO n'hi ha)
-    # ])
-
 def p3RTClassifier(spark, DW, model):
-    print("aaaaaaaaaaaaaa")
+    # STEP 0 --> Create the empty queryCache
     modelSchema = StructType([
         StructField('aircraftid', StringType(), True),
         StructField('timeid', DateType(), True),
@@ -118,9 +126,11 @@ def p3RTClassifier(spark, DW, model):
         StructField('FC', FloatType(), True),
         StructField('DM', FloatType(), True),
         StructField('value', FloatType(), True),
-        StructField('label',  BooleanType(), True)
+        StructField('label',  IntegerType(), True)
     ])
-
+    # If we had no problems saving the model, we would not use it as a function parameter and we would execute the following line:
+    # model = PipelineModel.read().load("ModelPipeline")
     queryCache = spark.createDataFrame([], schema = modelSchema)  
     queryCache = interface(spark, DW, queryCache, model)
-    return queryCache
+    print("These are all the queries done:")
+    queryCache.show()

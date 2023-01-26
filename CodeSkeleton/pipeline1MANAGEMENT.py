@@ -7,19 +7,9 @@ from pyspark.sql.types import StructType,StructField, StringType, DateType, Floa
 from pyspark.sql.functions import lit
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
+import numpy
 
-# HADOOP_HOME = "C:/Users/USER/Desktop/CED/Q5/BDA/PROJECTE2/BDA-big-data/CodeSkeleton/resources/hadoop_home"
-# JDBC_JAR = "C:/Users/USER/Desktop/CED/Q5/BDA/PROJECTE2/BDA-big-data/CodeSkeleton/resources/postgresql-42.2.8.jar"
-# PYSPARK_PYTHON = "python3"
-# PYSPARK_DRIVER_PYTHON = "python3"
-
-
-HADOOP_HOME = "C:/UNI/Quart/BDA/BDA-big-data/CodeSkeleton/resources/hadoop_home"
-JDBC_JAR = "C:/UNI/Quart/BDA/BDA-big-data/CodeSkeleton/resources/postgresql-42.2.8.jar"
-PYSPARK_PYTHON = "python3"
-PYSPARK_DRIVER_PYTHON = "python3"
-
-
+#------------------------------------------------------------------------------------------------------------------------------------------------------#
 # This pipeline reads the data from the sensors, aircraft utilization and operation interruption, and creates a dataframe with the following columns:
 # aircraftid, timeid, FH, FC, DM, value, label
 # where aircraftid is the aircraft id, timeid is the day of the measurement, FH is flighthours, FC is flightcycles, DM is delayedminutes,
@@ -33,9 +23,10 @@ PYSPARK_DRIVER_PYTHON = "python3"
 #       NOTE: The data is filtered to only include the interruptions that are not scheduled, and then using a full join 
 #           we add the unscheduledOI column to the data. If the interruption is not scheduled, the value is 1, and 0 otherwise
 #   5. Check wether the following 7 days have an unscheduled OI or not. If not, the label column is set to 0
-#   6. Transform the DataFrame to matrix and save it as a .csv
+#   6. Transform the DataFrame to matrix and save it as a .txt
 #       NOTE: At the end it returns the DataFrame since the model needs it to train the model, so it is not necessary to read it again
 #           The line to transform the DataFrame to matrix is commented
+#------------------------------------------------------------------------------------------------------------------------------------------------------#
 
 # Reads the csv files from resources/trainingData folder and returns a list of DafaFrames which also contains
 # the last 6 characters from the filename without the csv extension
@@ -95,8 +86,19 @@ def check_following_days(DATA):
 
 
 def DFtoMatrix(df):
-
-    return None
+    PANDASdf = df.toPandas()
+    MATRIX = []
+    # ['aircraftid','timeid','FH','FC','DM','value','label']]
+    for row in PANDASdf.iterrows():
+        aircraftid = row[1][0]
+        timeid = row[1][1].strftime("%Y-%m-%d")
+        FH = str(row[1][2])
+        FC = str(row[1][3])
+        DM = str(row[1][4])
+        value = str(row[1][5])
+        label = str(row[1][6])
+        MATRIX.append([aircraftid,timeid,FH,FC,DM,value,label])
+    return MATRIX
 
 def p1Management(spark,AMOS,DW):
     
@@ -143,7 +145,12 @@ def p1Management(spark,AMOS,DW):
     DATA = DATA.na.drop(subset = ['value'])
         
     # 6. We transform the dataframe to a matrix and save it in a csv_file
-    #   NOTE: We don't execute it since its not necessary
-    # matrixDATA = DFtoMatrix(DATA)
-
+    #   NOTE: We don't execute it since its not necessary in this context
+    matrixDATA = DFtoMatrix(DATA)
+    LABELLEDmatrixDATA = [['aircraftid','timeid','FH','FC','DM','value','label']] + matrixDATA # we add the column labels
+    matrixFile = open("MatrixData.txt","w+")
+    for row in LABELLEDmatrixDATA:
+        row = ",".join(row)
+        matrixFile.write(row+"\n")
+    matrixFile.close()   
     return DATA
